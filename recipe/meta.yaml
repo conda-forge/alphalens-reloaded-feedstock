@@ -6,20 +6,20 @@ package:
   version: {{ version }}
 
 source:
-  url: https://pypi.io/packages/source/{{ name[0] }}/{{ name }}/alphalens-reloaded-{{ version }}.tar.gz
+  url: https://pypi.org/packages/source/{{ name[0] }}/{{ name }}/alphalens-reloaded-{{ version }}.tar.gz
   sha256: 78985b5d502d5ab3e81d1bb77b08250fd0ece43b0fe3c696256f98154f44f7d0
 
 build:
   noarch: python
   script: {{ PYTHON }} -m pip install . -vv
-  number: 0
+  number: 1
 
 requirements:
   host:
-    - python >=3.8
+    - python {{ python_min }}
     - pip
   run:
-    - python >=3.8
+    - python >={{ python_min }}
     - matplotlib-base >=1.4.0
     - numpy >=1.9.1
     - pandas >=1.0.0
@@ -43,6 +43,7 @@ test:
     - pytest-xdist >=2.5.0
     - pytest-cov >=2.12
     - parameterized >=0.6.1
+    - python {{ python_min }}
 
 about:
   home: https://pypi.org/project/alphalens-reloaded/
