@@ -1,13 +1,13 @@
 {% set name = "alphalens-reloaded" %}
-{% set version = "0.4.3" %}
+{% set version = "0.4.6" %}
 
 package:
   name: {{ name|lower }}
   version: {{ version }}
 
 source:
-  url: https://pypi.io/packages/source/{{ name[0] }}/{{ name }}/alphalens-reloaded-{{ version }}.tar.gz
-  sha256: 78985b5d502d5ab3e81d1bb77b08250fd0ece43b0fe3c696256f98154f44f7d0
+  url: https://pypi.org/packages/source/{{ name[0] }}/{{ name }}/{{ name | replace('-', '_') }}-{{ version }}.tar.gz
+  sha256: 24fe8cc289965e53b22cef91f1060b8ef9ab2561b4b37752d3d068f31b4ce744
 
 build:
   noarch: python
