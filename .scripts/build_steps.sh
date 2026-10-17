@@ -20,6 +20,7 @@ export PYTHONUNBUFFERED=1
 export RECIPE_ROOT="${RECIPE_ROOT:-/home/conda/recipe_root}"
 export CI_SUPPORT="${FEEDSTOCK_ROOT}/.ci_support"
 export CONFIG_FILE="${CI_SUPPORT}/${CONFIG}.yaml"
+export RATTLER_CACHE_DIR="${FEEDSTOCK_ROOT}/build_artifacts/pkg_cache"
 
 cat >~/.condarc <<CONDARC
 
@@ -28,19 +29,22 @@ conda-build:
 pkgs_dirs:
   - ${FEEDSTOCK_ROOT}/build_artifacts/pkg_cache
   - /opt/conda/pkgs
+solver: libmamba
 
 CONDARC
-
-
-mamba install --update-specs --yes --quiet --channel conda-forge \
-    conda-build pip boa conda-forge-ci-setup=3 "py-lief<0.12"
-mamba update --update-specs --yes --quiet --channel conda-forge \
-    conda-build pip boa conda-forge-ci-setup=3 "py-lief<0.12"
+mv /opt/conda/conda-meta/history /opt/conda/conda-meta/history.$(date +%Y-%m-%d-%H-%M-%S)
+echo > /opt/conda/conda-meta/history
+micromamba install --root-prefix ~/.conda --prefix /opt/conda \
+    --yes --override-channels --channel conda-forge --strict-channel-priority \
+    pip  python=3.14 conda-build conda-forge-ci-setup=4 "conda-build>=26.3"
+export CONDA_LIBMAMBA_SOLVER_NO_CHANNELS_FROM_INSTALLED=1
 
 # set up the condarc
 setup_conda_rc "${FEEDSTOCK_ROOT}" "${RECIPE_ROOT}" "${CONFIG_FILE}"
 
 source run_conda_forge_build_setup
+
+
 
 # make the build number clobber
 make_build_number "${FEEDSTOCK_ROOT}" "${RECIPE_ROOT}" "${CONFIG_FILE}"
@@ -54,19 +58,41 @@ if [[ -f "${FEEDSTOCK_ROOT}/LICENSE.txt" ]]; then
 fi
 
 if [[ "${BUILD_WITH_CONDA_DEBUG:-0}" == 1 ]]; then
-    if [[ "x${BUILD_OUTPUT_ID:-}" != "x" ]]; then
-        EXTRA_CB_OPTIONS="${EXTRA_CB_OPTIONS:-} --output-id ${BUILD_OUTPUT_ID}"
-    fi
-    conda debug "${RECIPE_ROOT}" -m "${CI_SUPPORT}/${CONFIG}.yaml" \
+    # differences between conda-build vs. rattler-build
+    #   - 1 step (conda debug + manually open shell) vs. 2 step (rb debug {setup, shell})
+    #   - recipe is positional vs. --recipe "${RECIPE_ROOT}"
+    #   - --output-id vs. --output-name
+    #   - --clobber-file vs. none
+    #   - none vs. --target-platform
+    CONDA_SUBDIR="${BUILD_PLATFORM}" conda debug \
+        "${RECIPE_ROOT}" \
+        -m "${CI_SUPPORT}/${CONFIG}.yaml" \
         ${EXTRA_CB_OPTIONS:-} \
+        ${BUILD_OUTPUT_ID:+--output-id "${BUILD_OUTPUT_ID}"} \
         --clobber-file "${CI_SUPPORT}/clobber_${CONFIG}.yaml"
 
     # Drop into an interactive shell
     /bin/bash
 else
-    conda mambabuild "${RECIPE_ROOT}" -m "${CI_SUPPORT}/${CONFIG}.yaml" \
-        --suppress-variables ${EXTRA_CB_OPTIONS:-} \
-        --clobber-file "${CI_SUPPORT}/clobber_${CONFIG}.yaml"
+    # differences between conda-build vs. rattler-build
+    #   - recipe is positional vs. --recipe "${RECIPE_ROOT}"
+    #   - --suppress-variables vs. none
+    #   - --clobber-file vs. none
+    #   - none vs. --target-platform
+    #   - --extra-meta a=b c=d vs. --extra-meta a=b --extra-meta c=d
+    CONDA_SUBDIR="${BUILD_PLATFORM}" conda-build \
+        "${RECIPE_ROOT}" \
+        -m "${CI_SUPPORT}/${CONFIG}.yaml" \
+        ${EXTRA_CB_OPTIONS:-} \
+        --suppress-variables \
+        --clobber-file "${CI_SUPPORT}/clobber_${CONFIG}.yaml" \
+        --extra-meta flow_run_id="${flow_run_id:-}" remote_url="${remote_url:-}" sha="${sha:-}"
+    ( startgroup "Inspecting artifacts" ) 2> /dev/null
+
+    # inspect_artifacts was only added in conda-forge-ci-setup 4.9.4
+    command -v inspect_artifacts >/dev/null 2>&1 && inspect_artifacts --recipe-dir "${RECIPE_ROOT}" -m "${CONFIG_FILE}" || echo "inspect_artifacts needs conda-forge-ci-setup >=4.9.4"
+
+    ( endgroup "Inspecting artifacts" ) 2> /dev/null
     ( startgroup "Validating outputs" ) 2> /dev/null
 
     validate_recipe_outputs "${FEEDSTOCK_NAME}"
